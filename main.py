@@ -1,30 +1,53 @@
 import asyncio
+import os
+import sys
 from telethon import TelegramClient, events
 
-# =========================================================
-# ⚙️ CREDENTIALS AUTOMATICALLY PLUGGED IN FOR YOU
-# =========================================================
-
-API_ID = 34195900  # Your Telegram App api_id
-API_HASH = '1b8f2c2a7f8c3580eea7b568b2bdeace'  # Your Telegram App api_hash
-
-# The exact name of your private group
+# Credentials
+API_ID = 34195900
+API_HASH = '1b8f2c2a7f8c3580eea7b568b2bdeace'
 TARGET_GROUP_NAME = 'SolHouse Signal VIP'
-
-# Your specific VIP keywords (set to lowercase for perfect matching)
 KEYWORDS = ['💎 diamond', 'high risk signal']
 
-# =========================================================
-# 🛑 DO NOT TOUCH ANYTHING BELOW THIS LINE
-# =========================================================
+# Retrieve phone and code from Render environment variables
+PHONE = os.getenv('TELEGRAM_PHONE')
+CODE = os.getenv('TELEGRAM_CODE')
 
-client = TelegramClient('iphone_final_session', API_ID, API_HASH)
+if not PHONE:
+  print(
+      '❌ ERROR: TELEGRAM_PHONE variable is missing. Please add it in Render'
+      ' Settings!'
+  )
+  sys.exit(1)
 
 
 async def main():
-  print('Logging in and scanning your chats...')
-  await client.start()
+  print('Initializing Telegram client...')
+  client = TelegramClient('render_session', API_ID, API_HASH)
 
+  await client.connect()
+
+  # If not authorized, try logging in using the variables
+  if not await client.is_user_authorized():
+    if not CODE:
+      print(f'Sending login code request to {PHONE}...')
+      await client.send_code_request(PHONE)
+      print(
+          '➡️ STEP 1 COMPLETE: Login code sent! Please check your Telegram app,'
+          ' copy the code, add it as TELEGRAM_CODE in Render Settings, and'
+          ' redeploy.'
+      )
+      return
+    else:
+      try:
+        print(f'Attempting to log in with code: {CODE}...')
+        await client.sign_in(PHONE, CODE)
+        print('✅ Logged in successfully!')
+      except Exception as e:
+        print(f'❌ Login failed: {e}. Please update TELEGRAM_CODE and try again.')
+        return
+
+  print('Scanning your chats...')
   target_chat_id = None
   async for dialog in client.iter_dialogs():
     if dialog.name == TARGET_GROUP_NAME:
@@ -33,10 +56,7 @@ async def main():
       break
 
   if not target_chat_id:
-    print(
-        f'❌ ERROR: Could not find any group named "{TARGET_GROUP_NAME}". Check'
-        ' your spelling!'
-    )
+    print(f'❌ ERROR: Could not find any group named "{TARGET_GROUP_NAME}".')
     return
 
   @client.on(events.NewMessage(chats=target_chat_id))
@@ -46,7 +66,7 @@ async def main():
       if any(keyword in message_text for keyword in KEYWORDS):
         try:
           await event.forward_to('me')
-          print(f'Forwarded message matching keyword: "{event.text[:20]}..."')
+          print(f'Forwarded message: "{event.text[:20]}..."')
         except Exception as e:
           print(f'Forwarding error: {e}')
 
@@ -58,3 +78,4 @@ if __name__ == '__main__':
   import asyncio
 
   asyncio.run(main())
+
